@@ -171,8 +171,12 @@ app.post('/webhook', (req, res) => {
         if (requestId) {
             const pendingFileInfo = findPendingFileByRequestId(requestId);
             if (pendingFileInfo) {
+                // Remove document_type from finalData before saving
+                const dataToSave = { ...finalData };
+                delete dataToSave.document_type;
+                
                 // Save final data (not wrapped in arrays)
-                fs.writeFileSync(pendingFileInfo.fullPath, JSON.stringify(finalData, null, 2));
+                fs.writeFileSync(pendingFileInfo.fullPath, JSON.stringify(dataToSave, null, 2));
 
                 // เปลี่ยนชื่อไฟล์โดยลบ requestId ออก
                 let finalFilename = pendingFileInfo.filename.replace(`_${requestId}`, '');
@@ -244,7 +248,12 @@ app.post('/webhook', (req, res) => {
             }
             
             filePath = path.join(fileFolder, filename);
-            fs.writeFileSync(filePath, JSON.stringify(finalData, null, 2));
+            
+            // Remove document_type from finalData before saving
+            const dataToSave = { ...finalData };
+            delete dataToSave.document_type;
+            
+            fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
         }
         
         console.log(`Saved webhook data to: ${filePath}`);
