@@ -243,17 +243,33 @@ async function processFilesInBatches(selectedPages = []) {
   // แสดงรายการไฟล์ทั้งหมด
   const files = await listAllPdfFiles();
   
-  const splitEnabled = splitToOcrConfig.enabled && splitToOcrConfig.pages.length > 0;
+  const splitEnabled = splitToOcrConfig.enabled;
  
   if (splitEnabled) {
     console.log("\n=== Split-to-OCR Mode Enabled ===");
-    console.log(`หน้าที่จะถูกส่ง: ${splitToOcrConfig.pages.join(', ')}`);
+    
+    if (splitToOcrConfig.pages.length === 0) {
+      console.log(`หน้าที่จะถูกส่ง: ทุกหน้า (1 ถึง จำนวนหน้าของแต่ละไฟล์)`);
+    } else {
+      console.log(`หน้าที่จะถูกส่ง: ${splitToOcrConfig.pages.join(', ')}`);
+    }
     console.log(`จำนวนไฟล์ที่จะประมวลผล: ${files.length} ไฟล์`);
     console.log("=================================\n");
  
     for (const fileName of files) {
       console.log(`\n--- แยกหน้าไฟล์ ${fileName} ---`);
-      for (const pageNumber of splitToOcrConfig.pages) {
+      
+      let pagesToProcess = splitToOcrConfig.pages;
+      
+      // If pages array is empty, process all pages (1 to pageCount)
+      if (pagesToProcess.length === 0) {
+        const filePath = path.join(source, fileName);
+        const pageCount = await getPdfPageCount(filePath);
+        pagesToProcess = Array.from({ length: pageCount }, (_, i) => i + 1);
+        console.log(`ไฟล์ ${fileName} มี ${pageCount} หน้า จะประมวลผลทุกหน้า`);
+      }
+      
+      for (const pageNumber of pagesToProcess) {
         console.log(`Processing page ${pageNumber} of ${fileName}`);
         await processFile(fileName, [pageNumber]);
         await delay(1000);
