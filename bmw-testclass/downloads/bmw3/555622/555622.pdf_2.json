@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "data": {
+        "document_type": "Withholding Tax Agent Appointment Agreement",
+        "agreement_date": "2025-09-30",
+        "parties": {
+          "payer": {
+            "name": "บริษัท 4 น.โชคพัฒนา จำกัด",
+            "tax_id": "0145548000054",
+            "address": "39 หมู่ที่ 12 ตำบลภู อำเภออุทัย จังหวัดพระนครศรีอยุธยา 13210",
+            "phone_number": null
+          },
+          "company": {
+            "name": "บริษัท บีเอ็มดับเบิลยู ลิสซิ่ง (ประเทศไทย) จำกัด",
+            "tax_id": "0105544073090",
+            "address": "1875 ชั้น 17 วัน แบงคอก ทาวเวอร์ 3 ถนนพระรามที่ 4 จังหวัดกรุงเทพมหานคร 10330"
+          }
+        },
+        "asset_details": {
+          "asset_type": "Car",
+          "brand": "BMW",
+          "model": "X3 xDrive30e M Sport",
+          "engine_number": "0009W419",
+          "chassis_number": "MMF74DS020Y145431",
+          "price": 3050000,
+          "lease_term_months": 60,
+          "first_payment_date": "2025-10-24"
+        },
+        "signatures": {
+          "payer_signature": {
+            "name": "นาย ยศพงษ์ ขอพร",
+            "digital_signature_id": "4288AA06D47B406"
+          },
+          "company_signature": {
+            "name": null,
+            "digital_signature_id": null
+          },
+          "witness_signature_1": {
+            "name": null,
+            "digital_signature_id": "47F523AAC0714CB"
+          },
+          "witness_signature_2": {
+            "name": null,
+            "digital_signature_id": null
+          }
+        }
+      }
+    }
+  ]
+}

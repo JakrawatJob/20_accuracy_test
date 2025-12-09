@@ -1,0 +1,32 @@
+{
+  "data": [
+    {
+      "data": {
+        "contract_number": "555322",
+        "contract_date": "30 กันยายน 2568",
+        "vehicle_brand": "BMW",
+        "vehicle_model": "320d M Sport",
+        "engine_number": "0046W496",
+        "chassis_number": "MMF24FW010Y158879",
+        "lessee_name": "KUO-WEI CHIU",
+        "lessee_address": "809/101 ซอยสุขุมวิท 50 แขวงพระโขนง เขตคลองเตย จังหวัดกรุงเทพมหานคร 10260",
+        "lease_agreement_date": "30 กันยายน 2568",
+        "lease_amount": "1,862,803.80",
+        "number_of_installments": "60",
+        "company_name": "บริษัท บีเอ็มดับเบิลยู ลิสซิ่ง (ประเทศไทย) จำกัด",
+        "signatures": [
+          {
+            "signer_name": "KUO-WEI CHIU",
+            "signature_id": "BE55445C4A49486",
+            "role": "Lessee"
+          },
+          {
+            "signer_name": null,
+            "signature_id": "5E05DAD40E0374ED",
+            "role": "Company Representative"
+          }
+        ]
+      }
+    }
+  ]
+}

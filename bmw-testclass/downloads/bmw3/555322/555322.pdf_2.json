@@ -1,0 +1,90 @@
+{
+  "data": [
+    {
+      "data": {
+        "document_type": "Addendum to Lease Agreement",
+        "document_number": "555322",
+        "lessor": {
+          "name": "บริษัท บีเอ็มดับเบิลยู ลิสซิ่ง (ประเทศไทย) จำกัด",
+          "signature_id": "EOEDAD4DE0374ED"
+        },
+        "lessee": {
+          "name": "นาย KUO-WEI CHIU",
+          "signature_id": "BE55445C4A49486"
+        },
+        "payment_schedule": [
+          {
+            "installment_no": 1,
+            "due_date": "30/10/2568",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 2,
+            "due_date": "30/11/2568",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 3,
+            "due_date": "30/12/2568",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 4,
+            "due_date": "30/01/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 5,
+            "due_date": "28/02/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 6,
+            "due_date": "30/03/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 7,
+            "due_date": "30/04/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 8,
+            "due_date": "30/05/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 9,
+            "due_date": "30/06/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          },
+          {
+            "installment_no": 10,
+            "due_date": "30/07/2569",
+            "monthly_lease_payment": 31046.73,
+            "vat": 2173.27,
+            "total_monthly_payment": 33220
+          }
+        ]
+      }
+    }
+  ]
+}
