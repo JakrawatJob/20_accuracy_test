@@ -8,7 +8,7 @@ const { PDFDocument } = require("pdf-lib");
 const selectedPages = [];  
 const splitToOcrConfig = {
   enabled: true, // toggle split-to-OCR mode
-  pages: [1,2] // specify individual pages to send (per file)
+  pages: [1] // specify individual pages to send (per file)
 };
 //const webhookUrl = 	"https://aiflow-np.aigen.online/webhook-test/ricoh-webhook"
 const webhookUrl = "https://playground2-3001.space.aigen.dev/webhook"

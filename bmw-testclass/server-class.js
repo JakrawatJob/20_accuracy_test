@@ -81,6 +81,47 @@ const extractDataByPath = (payload, pathString) => {
   return result;
 };
 
+// Extract final data object from webhook payload
+// Expected structure: { data: [{ data: { document_type, ... } }] }
+const extractFinalData = (payload) => {
+  try {
+    // Try to extract data.data[0].data (the actual document data)
+    if (payload?.data && Array.isArray(payload.data) && payload.data.length > 0) {
+      const firstItem = payload.data[0];
+      if (firstItem?.data && typeof firstItem.data === 'object') {
+        return firstItem.data; // Return the final data object
+      }
+    }
+    
+    // Fallback: try data.data path
+    const extracted = extractDataByPath(payload, 'data.data');
+    if (extracted && typeof extracted === 'object') {
+      // If it's an array, get first element's data
+      if (Array.isArray(extracted) && extracted.length > 0 && extracted[0]?.data) {
+        return extracted[0].data;
+      }
+      // If it's already the object, return it
+      if (!Array.isArray(extracted)) {
+        return extracted;
+      }
+    }
+    
+    console.warn('Could not extract final data from payload. Returning full payload.');
+    return payload;
+  } catch (error) {
+    console.error('Error extracting final data:', error);
+    return payload;
+  }
+};
+
+// Extract document_type from final data
+const extractDocumentType = (finalData) => {
+  if (finalData && typeof finalData === 'object' && finalData.document_type) {
+    return finalData.document_type;
+  }
+  return null;
+};
+
 // Apply data extraction based on config
 const applyDataExtraction = (payload) => {
   if (!DATA_EXTRACTION_CONFIG.enabled) {
@@ -120,8 +161,9 @@ app.post('/webhook', (req, res) => {
         const rawData = req.body || {};
         const requestId = extractRequestId(rawData);
         
-        // Apply data extraction based on config
-        const dataToSave = applyDataExtraction(rawData);
+        // Extract final data object (data.data[0].data)
+        const finalData = extractFinalData(rawData);
+        const documentType = extractDocumentType(finalData);
         
         let filename;
         let filePath;
@@ -129,11 +171,23 @@ app.post('/webhook', (req, res) => {
         if (requestId) {
             const pendingFileInfo = findPendingFileByRequestId(requestId);
             if (pendingFileInfo) {
-                // อัปเดตไฟล์ pending
-                fs.writeFileSync(pendingFileInfo.fullPath, JSON.stringify(dataToSave, null, 2));
+                // Save final data (not wrapped in arrays)
+                fs.writeFileSync(pendingFileInfo.fullPath, JSON.stringify(finalData, null, 2));
 
                 // เปลี่ยนชื่อไฟล์โดยลบ requestId ออก
-                const finalFilename = pendingFileInfo.filename.replace(`_${requestId}`, '');
+                let finalFilename = pendingFileInfo.filename.replace(`_${requestId}`, '');
+                
+                // Add document_type to filename if available
+                if (documentType) {
+                    // Extract base filename without extension
+                    const parsed = path.parse(finalFilename);
+                    const baseName = parsed.name; // e.g., "555322.pdf_1"
+                    const extension = parsed.ext; // ".json"
+                    
+                    // Add document_type before extension
+                    finalFilename = `${baseName}__schema_${documentType}${extension}`;
+                    console.log(`Adding document_type to filename: ${documentType}`);
+                }
                 
                 // ถ้ามี folder ให้เก็บไว้ใน folder เดิม
                 if (pendingFileInfo.folder) {
@@ -151,9 +205,7 @@ app.post('/webhook', (req, res) => {
                     console.log(`Updated pending file for request_id ${requestId}: ${finalFilename}`);
                 }
                 
-                if (DATA_EXTRACTION_CONFIG.enabled) {
-                    console.log(`  Extracted data from path: ${DATA_EXTRACTION_CONFIG.path}`);
-                }
+                console.log(`  Extracted final data with document_type: ${documentType || 'N/A'}`);
             } else {
                 console.warn(`Pending file for request_id ${requestId} not found. Falling back to new file.`);
             }
@@ -176,6 +228,12 @@ app.post('/webhook', (req, res) => {
                 baseFilename += '.json';
             }
 
+            // Add document_type to filename if available
+            if (documentType) {
+                const parsed = path.parse(baseFilename);
+                baseFilename = `${parsed.name}_${documentType}${parsed.ext}`;
+            }
+
             filename = sanitizeFileName(baseFilename);
             
             // สร้าง folder ตามชื่อไฟล์ (ตัด extension)
@@ -186,7 +244,7 @@ app.post('/webhook', (req, res) => {
             }
             
             filePath = path.join(fileFolder, filename);
-            fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+            fs.writeFileSync(filePath, JSON.stringify(finalData, null, 2));
         }
         
         console.log(`Saved webhook data to: ${filePath}`);
