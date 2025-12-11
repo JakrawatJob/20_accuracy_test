@@ -12,7 +12,8 @@ const splitToOcrConfig = {
 };
 
 // Path to JSON results folder
-const jsonResultPath = path.join(__dirname, "jsonResult", "passport");
+// Root folder containing JSON results (may include multiple subfolders such as "passport", "passport copy", etc.)
+const jsonResultPath = path.join(__dirname, "jsonResult");
 
 /**
  * Extract page numbers from JSON result filenames
@@ -20,57 +21,109 @@ const jsonResultPath = path.join(__dirname, "jsonResult", "passport");
  * Example: 508807.pdf_19__schema_passport.json -> { baseFile: "508807.pdf", page: 19 }
  */
 function extractPageNumbersFromJsonResults() {
-  const pageMap = {}; // Map: PDF filename -> array of page numbers
-  
+  // Map: PDF filename -> { pages: number[], dir: relative parent dir inside jsonResult }
+  const pageMap = {};
+
+  const collectJsonFilesRecursive = (dir) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    let files = [];
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files = files.concat(collectJsonFilesRecursive(fullPath));
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith(".json") &&
+        // accept any schema type, e.g. __schema_passport, __schema_amr, etc.
+        entry.name.includes("__schema_")
+      ) {
+        files.push(fullPath);
+      }
+    }
+    return files;
+  };
+
   try {
     if (!fs.existsSync(jsonResultPath)) {
       console.warn(`JSON results folder not found: ${jsonResultPath}`);
       return pageMap;
     }
-    
-    const jsonFiles = fs.readdirSync(jsonResultPath)
-      .filter(file => file.endsWith('.json') && file.includes('__schema_passport'));
-    
+
+    const jsonFiles = collectJsonFilesRecursive(jsonResultPath);
+
     console.log(`\n=== Scanning JSON Results ===`);
     console.log(`Found ${jsonFiles.length} JSON result files`);
-    
-    for (const jsonFile of jsonFiles) {
+
+    for (const jsonFileFullPath of jsonFiles) {
+      const jsonFile = path.basename(jsonFileFullPath);
+      const relativeDir = path.relative(jsonResultPath, path.dirname(jsonFileFullPath)); // e.g., "passport"
       // Parse filename: 508807.pdf_19__schema_passport.json
-      // Pattern: {baseFile}_{page}__schema_passport.json
-      // Match everything up to .pdf, then _pageNumber__schema_passport.json
-      const match = jsonFile.match(/^(.+\.pdf)_(\d+)__schema_passport\.json$/);
-      
+      // Pattern: {baseFile}_{page}__schema_<type>.json
+      // Match everything up to .pdf, then _pageNumber__schema_<schemaName>.json
+      const match = jsonFile.match(/^(.+\.pdf)_(\d+)__schema_[^.]+\.json$/);
+
       if (match) {
         const baseFile = match[1]; // e.g., "508807.pdf"
         const pageNumber = parseInt(match[2], 10); // e.g., 19
-        
+
         if (!pageMap[baseFile]) {
-          pageMap[baseFile] = [];
+          pageMap[baseFile] = { pages: [], dir: relativeDir };
+        } else if (!pageMap[baseFile].dir) {
+          pageMap[baseFile].dir = relativeDir;
         }
-        pageMap[baseFile].push(pageNumber);
-        
+
+        if (!pageMap[baseFile].pages.includes(pageNumber)) {
+          pageMap[baseFile].pages.push(pageNumber);
+        }
+
         console.log(`  ${baseFile} -> page ${pageNumber}`);
       } else {
         console.warn(`  Could not parse filename: ${jsonFile}`);
       }
     }
-    
+
     // Sort page numbers for each file
     for (const baseFile in pageMap) {
-      pageMap[baseFile].sort((a, b) => a - b);
+      pageMap[baseFile].pages.sort((a, b) => a - b);
     }
-    
+
     console.log(`\n=== Page Mapping Summary ===`);
     for (const baseFile in pageMap) {
-      console.log(`  ${baseFile}: pages [${pageMap[baseFile].join(', ')}]`);
+      const dirLabel = pageMap[baseFile].dir ? ` (${pageMap[baseFile].dir})` : "";
+      console.log(`  ${baseFile}${dirLabel}: pages [${pageMap[baseFile].pages.join(", ")}]`);
     }
     console.log("============================\n");
-    
   } catch (error) {
     console.error("Error reading JSON results:", error);
   }
-  
+
   return pageMap;
+}
+
+/**
+ * Recursively collect PDF files under a directory.
+ * Returns paths relative to the source root so downstream logic can keep using path.join(source, relPath).
+ */
+function collectPdfFilesRecursive(dir, relativeBase = "") {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const entryRelativePath = path.join(relativeBase, entry.name);
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...collectPdfFilesRecursive(fullPath, entryRelativePath));
+    } else if (
+      entry.isFile() &&
+      entry.name.toLowerCase().endsWith(".pdf") &&
+      !entry.name.includes("desktop.ini")
+    ) {
+      files.push(entryRelativePath);
+    }
+  }
+
+  return files;
 }
 //const webhookUrl = 	"https://aiflow-np.aigen.online/webhook-test/ricoh-webhook"
 const webhookUrl = "https://playground2-3001.space.aigen.dev/webhook"
@@ -150,7 +203,7 @@ async function extractPagesFromPdf(pdfPath, pageNumbers) {
   }
 }
 
-async function processFile(fileName, pageNumbers = []) {
+async function processFile(fileName, pageNumbers = [], targetSubdir = "") {
   try {
     if (fileName.includes("desktop.ini")) return;
 
@@ -221,15 +274,15 @@ async function processFile(fileName, pageNumbers = []) {
 
     const requestId = extractRequestId(response.data);
     if (requestId) {
-      // สร้าง folder ตามชื่อไฟล์ (ตัด extension ออก)
+      // สร้าง folder ตาม parent folder ของ JSON (ถ้ามี) หรือใช้ downloadsDir เดิม
       const fileNameWithoutExt = path.parse(originalFileName).name;
-      const fileFolder = path.join(downloadsDir, sanitizeFileName(fileNameWithoutExt));
-      createDirectory(fileFolder);
+      const parentDir = targetSubdir ? path.join(downloadsDir, targetSubdir) : downloadsDir;
+      createDirectory(parentDir);
       
       const pendingBaseName =
         pageNumbers.length > 0 ? `${originalFileName}_${pageLabel}` : originalFileName;
       const pendingFileName = `${sanitizeFileName(pendingBaseName)}_${requestId}.json`;
-      const pendingPath = path.join(fileFolder, pendingFileName);
+      const pendingPath = path.join(parentDir, pendingFileName);
       const pendingPayload = {
         status: "pending",
         request_id: requestId,
@@ -239,7 +292,8 @@ async function processFile(fileName, pageNumbers = []) {
         response_preview: response.data,
       };
       fs.writeFileSync(pendingPath, JSON.stringify(pendingPayload, null, 2));
-      console.log(`Created pending file: ${pendingFileName} in folder: ${fileNameWithoutExt}`);
+      const logFolder = targetSubdir || ".";
+      console.log(`Created pending file: ${pendingFileName} in folder: ${logFolder}`);
     } else {
       console.warn("No request_id found in response; pending file not created.");
     }
@@ -248,7 +302,11 @@ async function processFile(fileName, pageNumbers = []) {
     const jsonFileName = pageNumbers.length > 0 
       ? `${fileNameWithoutExtension}_pages_${pageNumbers.join("-")}.json`
       : `${fileNameWithoutExtension}.json`;
-    const jsonPath = path.join(destination, "json", jsonFileName);
+    const jsonDir = targetSubdir
+      ? path.join(destination, "json", targetSubdir)
+      : path.join(destination, "json");
+    createDirectory(jsonDir);
+    const jsonPath = path.join(jsonDir, jsonFileName);
     fs.writeFileSync(jsonPath, JSON.stringify(response.data, null, 2));
   } catch (error) {
     let errorMessage = `Error processing file ${fileName}`;
@@ -261,7 +319,11 @@ async function processFile(fileName, pageNumbers = []) {
     const errorFileName = pageNumbers.length > 0
       ? `${fileName}_pages_${pageNumbers.join("-")}.error.log`
       : `${fileName}.error.log`;
-    const errorPath = path.join(destination, "error", errorFileName);
+    const errorDir = targetSubdir
+      ? path.join(destination, "error", targetSubdir)
+      : path.join(destination, "error");
+    createDirectory(errorDir);
+    const errorPath = path.join(errorDir, errorFileName);
     fs.writeFileSync(
       errorPath,
       JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
@@ -284,9 +346,7 @@ async function getPdfPageCount(pdfPath) {
 // แสดงรายละเอียดของไฟล์ PDF ทั้งหมดพร้อมจำนวนหน้า
 async function listAllPdfFiles() {
   console.log("\n=== รายการไฟล์ PDF ทั้งหมด ===");
-  const files = fs
-    .readdirSync(source)
-    .filter(file => file.toLowerCase().endsWith('.pdf') && !file.includes("desktop.ini"));
+  const files = collectPdfFilesRecursive(source);
   
   console.log(`พบไฟล์ PDF ทั้งหมด ${files.length} ไฟล์`);
   
@@ -318,11 +378,12 @@ async function processFilesInBatches(selectedPages = []) {
     const filesToSkip = [];
     
     for (const fileName of files) {
-      const pagesToProcess = pageMap[fileName] || [];
+      const baseName = path.basename(fileName);
+      const { pages: pagesToProcess = [], dir: jsonDir = "" } = pageMap[baseName] || {};
       if (pagesToProcess.length === 0) {
         filesToSkip.push(fileName);
       } else {
-        filesToProcess.push({ fileName, pages: pagesToProcess });
+        filesToProcess.push({ fileName, pages: pagesToProcess, dir: jsonDir });
       }
     }
     
@@ -337,21 +398,22 @@ async function processFilesInBatches(selectedPages = []) {
     
     if (filesToProcess.length > 0) {
       console.log(`\nไฟล์ที่จะประมวลผล:`);
-      filesToProcess.forEach(({ fileName, pages }) => {
-        console.log(`  - ${fileName}: pages [${pages.join(', ')}]`);
+      filesToProcess.forEach(({ fileName, pages, dir }) => {
+        const dirLabel = dir ? ` -> ${dir}` : "";
+        console.log(`  - ${fileName}${dirLabel}: pages [${pages.join(', ')}]`);
       });
     }
     
     console.log("=================================\n");
  
     // Process only files that have JSON results
-    for (const { fileName, pages: pagesToProcess } of filesToProcess) {
+    for (const { fileName, pages: pagesToProcess, dir: targetSubdir } of filesToProcess) {
       console.log(`\n--- แยกหน้าไฟล์ ${fileName} ---`);
       console.log(`  Found pages from JSON results: [${pagesToProcess.join(', ')}]`);
       
       for (const pageNumber of pagesToProcess) {
         console.log(`Processing page ${pageNumber} of ${fileName}`);
-        await processFile(fileName, [pageNumber]);
+        await processFile(fileName, [pageNumber], targetSubdir);
         await delay(1000);
       }
     }
