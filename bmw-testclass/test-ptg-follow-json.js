@@ -21,7 +21,7 @@ const jsonResultPath = path.join(__dirname, "jsonResult");
  * Example: 508807.pdf_19__schema_passport.json -> { baseFile: "508807.pdf", page: 19 }
  */
 function extractPageNumbersFromJsonResults() {
-  // Map: PDF filename -> { pages: number[], dir: relative parent dir inside jsonResult }
+  // Map: PDF filename -> { pages: number[], pageToDir: { pageNum: dir } }
   const pageMap = {};
 
   const collectJsonFilesRecursive = (dir) => {
@@ -67,16 +67,17 @@ function extractPageNumbersFromJsonResults() {
         const pageNumber = parseInt(match[2], 10); // e.g., 19
 
         if (!pageMap[baseFile]) {
-          pageMap[baseFile] = { pages: [], dir: relativeDir };
-        } else if (!pageMap[baseFile].dir) {
-          pageMap[baseFile].dir = relativeDir;
+          pageMap[baseFile] = { pages: [], pageToDir: {} };
         }
 
         if (!pageMap[baseFile].pages.includes(pageNumber)) {
           pageMap[baseFile].pages.push(pageNumber);
         }
 
-        console.log(`  ${baseFile} -> page ${pageNumber}`);
+        // เก็บ folder สำหรับแต่ละหน้า
+        pageMap[baseFile].pageToDir[pageNumber] = relativeDir;
+
+        console.log(`  ${baseFile} -> page ${pageNumber} (${relativeDir})`);
       } else {
         console.warn(`  Could not parse filename: ${jsonFile}`);
       }
@@ -89,8 +90,12 @@ function extractPageNumbersFromJsonResults() {
 
     console.log(`\n=== Page Mapping Summary ===`);
     for (const baseFile in pageMap) {
-      const dirLabel = pageMap[baseFile].dir ? ` (${pageMap[baseFile].dir})` : "";
-      console.log(`  ${baseFile}${dirLabel}: pages [${pageMap[baseFile].pages.join(", ")}]`);
+      const pages = pageMap[baseFile].pages;
+      const pageToDir = pageMap[baseFile].pageToDir;
+      console.log(`  ${baseFile}:`);
+      for (const page of pages) {
+        console.log(`    - page ${page} -> ${pageToDir[page]}`);
+      }
     }
     console.log("============================\n");
   } catch (error) {
@@ -138,9 +143,9 @@ const serviceUse = "bmw_ocr"
 
 const responseType = "webhook";
 
-const source = path.join(__dirname, "BMW_FILE");
+const source = path.join(__dirname, "BMW_FILE_test");
 const destination = path.join(__dirname, "downloads/result");
-const downloadsDir = path.join(__dirname, "downloads/bmw1");
+const downloadsDir = path.join(__dirname, "downloads/bmw_ocr");
 // Remove file_name= from base PATH
 const BASE_PATH = `https://playground2-3052.space.aigen.dev/workflow?action=process_document&channel=RPA_AppToOCR&content_encoding=binary&response_type=${responseType}&response_target=${encodeURIComponent(webhookUrl)}&service=${serviceUse}&file_name=`;
 const AIGEN_API_KEY = "AGa135fgnbiz63ico4o219shi7hxlobu06";
@@ -379,11 +384,14 @@ async function processFilesInBatches(selectedPages = []) {
     
     for (const fileName of files) {
       const baseName = path.basename(fileName);
-      const { pages: pagesToProcess = [], dir: jsonDir = "" } = pageMap[baseName] || {};
+      const fileData = pageMap[baseName] || {};
+      const pagesToProcess = fileData.pages || [];
+      const pageToDir = fileData.pageToDir || {};
+      
       if (pagesToProcess.length === 0) {
         filesToSkip.push(fileName);
       } else {
-        filesToProcess.push({ fileName, pages: pagesToProcess, dir: jsonDir });
+        filesToProcess.push({ fileName, pages: pagesToProcess, pageToDir });
       }
     }
     
@@ -398,21 +406,23 @@ async function processFilesInBatches(selectedPages = []) {
     
     if (filesToProcess.length > 0) {
       console.log(`\nไฟล์ที่จะประมวลผล:`);
-      filesToProcess.forEach(({ fileName, pages, dir }) => {
-        const dirLabel = dir ? ` -> ${dir}` : "";
-        console.log(`  - ${fileName}${dirLabel}: pages [${pages.join(', ')}]`);
+      filesToProcess.forEach(({ fileName, pages, pageToDir }) => {
+        console.log(`  - ${fileName}:`);
+        pages.forEach(page => {
+          console.log(`      page ${page} -> ${pageToDir[page]}`);
+        });
       });
     }
     
     console.log("=================================\n");
  
     // Process only files that have JSON results
-    for (const { fileName, pages: pagesToProcess, dir: targetSubdir } of filesToProcess) {
+    for (const { fileName, pages: pagesToProcess, pageToDir } of filesToProcess) {
       console.log(`\n--- แยกหน้าไฟล์ ${fileName} ---`);
-      console.log(`  Found pages from JSON results: [${pagesToProcess.join(', ')}]`);
       
       for (const pageNumber of pagesToProcess) {
-        console.log(`Processing page ${pageNumber} of ${fileName}`);
+        const targetSubdir = pageToDir[pageNumber] || "";
+        console.log(`Processing page ${pageNumber} of ${fileName} -> folder: ${targetSubdir || 'root'}`);
         await processFile(fileName, [pageNumber], targetSubdir);
         await delay(1000);
       }
