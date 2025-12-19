@@ -1,0 +1,56 @@
+amr notpass 0% already fix 100%
+application 100%
+approval_sheet 90% 2 file already fix
+1.AS-AMR_528941.pdf_1__schema_hire_purchase_contract
+2.AS-AMR_555653.pdf_1__schema_hire_purchase_contract
+bank_statement_company 100%
+bank_statement_individual 95%
+1.G. 555447.pdf_15__schema_bank_statement_company
+2.G. 555447.pdf_16__schema_bank_statement_company
+
+
+car_registration 100%
+company_affidavit 100%
+driving_license 70% หน้าหลัง
+1.Contract_549510_foreigner.pdf_41__schema_car_registration
+2.G. 555447.pdf_11__schema_car_registration
+
+financial_lease_contract_1 100%
+financial_lease_contract_2 80%
+1.Contract_552521.pdf_3__schema_hire_purchase_contract
+2.555622.pdf_5__schema_hire_purchase_contract
+
+financial_lease_contract_table_1 0%
+financial_lease_guarantee_contract 100%
+hire_purchase_asset_receipt 100%
+hire_purchase_contract_1 100%
+hire_purchase_contract_2 100%
+hire_purchase_contract_table_1 90%
+1.Contract_553349Used.pdf_11__schema_other
+2.Docusign_531518.pdf_24__schema_other
+hire_purchase_contract_table_2 85%
+Contract 552663.pdf_16__schema_other
+Contract_552850_foreigner.pdf_14__schema_other
+Docusign_531518.pdf_17__schema_other
+Docusign_552971.pdf_16__schema_other
+hire_purchase_guarantee_contract 100%
+hire_purchase_guarantor_warning 100%
+hp = allpass
+house_registration 100%
+passport 100%
+payslip 95%
+1.Docusign_552889_G1.pdf_11__schema_other
+2.Docusign_552889_G1.pdf_12__schema_other
+resident_certificate 80%
+salary_letter 65%
+1.Contract 552741_IDขีดคร่อม.pdf_38__schema_other
+2.Contract_553457_foreigner.pdf_39__schema_other
+thai_national_id_card 100%
+visa 70%
+1.555186.pdf_37__schema_passport
+2.555186.pdf_39__schema_passport
+3.555186.pdf_40__schema_passport
+4.Docusign_542494.pdf_72__schema_passport
+work_permit_paper 75%
+1.555186.pdf_43__schema_application
+2.Contract_552521.pdf_56__schema_other

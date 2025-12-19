@@ -137,8 +137,8 @@ const webhookUrl = "https://playground2-3001.space.aigen.dev/webhook"
 //const serviceUse = "bla"
 //const serviceUse = "malee_ocr"
 //const serviceUse = "custom_create_truth"
-//const serviceUse = "bmw_classify"
-const serviceUse = "bmw_ocr"
+const serviceUse = "bmw_classify"
+//const serviceUse = "bmw_ocr"
 //const serviceUse = "thaihonda_hospital"
 
 const responseType = "webhook";
@@ -146,6 +146,7 @@ const responseType = "webhook";
 const source = path.join(__dirname, "BMW_FILE");
 const destination = path.join(__dirname, "downloads/result");
 const downloadsDir = path.join(__dirname, "downloads/bmw1");
+const savePdfSplitFileDir = path.join(__dirname, "savePdfSplitFile");
 // Remove file_name= from base PATH
 const BASE_PATH = `https://playground2-3052.space.aigen.dev/workflow?action=process_document&channel=RPA_AppToOCR&content_encoding=binary&response_type=${responseType}&response_target=${encodeURIComponent(webhookUrl)}&service=${serviceUse}&file_name=`;
 const AIGEN_API_KEY = "AGa135fgnbiz63ico4o219shi7hxlobu06";
@@ -163,6 +164,7 @@ createDirectory(path.join(destination, "json"));
 createDirectory(path.join(destination, "error"));
 createDirectory(path.join(destination, "temp"));
 createDirectory(downloadsDir);
+createDirectory(savePdfSplitFileDir);
 
 const sanitizeFileName = (name = "") =>
   name.replace(/[<>:"/\\|?*\u0000]/g, "_");
@@ -233,86 +235,36 @@ async function processFile(fileName, pageNumbers = [], targetSubdir = "") {
       : path.parse(fileName).name; // For whole file processing
     
     // Check if we need to select specific pages
-    let fileToSend;
-    let fileSize;
+    let extractedPdfBytes;
     
     if (pageNumbers.length > 0) {
       // Extract specified pages
       console.log(`Extracting pages ${pageNumbers.join(", ")} from ${fileName}`);
-      const extractedPdfBytes = await extractPagesFromPdf(filePath, pageNumbers);
-      
-      // Save the extracted PDF to a temporary file
-      const tempFilePath = path.join(destination, "temp", `${fileNameWithoutExtension}.pdf`);
-      fs.writeFileSync(tempFilePath, extractedPdfBytes);
-      
-      // Use the temporary file
-      fileToSend = fs.createReadStream(tempFilePath);
-      fileSize = extractedPdfBytes.length;
+      extractedPdfBytes = await extractPagesFromPdf(filePath, pageNumbers);
     } else {
       // Use the original file (whole file)
-      fileToSend = fs.createReadStream(filePath);
-      const stats = fs.statSync(filePath);
-      fileSize = stats.size;
+      extractedPdfBytes = fs.readFileSync(filePath);
     }
 
-    // Use PassThrough to prevent the stream from being in flowing mode
-    const pass = new PassThrough();
-    fileToSend.pipe(pass);
-
-    const headers = {
-      "x-aigen-key": AIGEN_API_KEY || "",
-      "Content-Type": "application/pdf",
-      "Content-Length": fileSize,
-      "x-response-target-header": "ewogICAgIngtYXBpLWtleSI6ICJKMWhZcVoyX3FVNlp0S3V5TTdzMHhxWVluMHdZZFlKajl3R1pWYjliY1ZFIgp9"
-    };
-
-    console.log(`Sending file: ${fileNameToEncode} (Base64: ${encodedFileName})`);
+    // Save PDF file to savePdfSplitFile folder instead of sending to API
+    const saveDir = targetSubdir 
+      ? path.join(savePdfSplitFileDir, targetSubdir)
+      : savePdfSplitFileDir;
+    createDirectory(saveDir);
     
-    // Send file to server with encoded filename in URL
-    const response = await axios.post(PATH, pass, { headers });
+    const savedFileName = pageNumbers.length > 0
+      ? `${fileNameWithoutExtension}.pdf`
+      : originalFileName;
+    const savedFilePath = path.join(saveDir, savedFileName);
     
-    let resultMessage = `Success: ${fileName}`;
+    fs.writeFileSync(savedFilePath, extractedPdfBytes);
+    
+    let resultMessage = `Saved PDF file: ${savedFileName}`;
     if (pageNumbers.length > 0) {
       resultMessage += ` (pages ${pageNumbers.join(", ")})`;
     }
+    resultMessage += ` to folder: ${targetSubdir || 'root'}`;
     console.log(resultMessage);
-
-    const requestId = extractRequestId(response.data);
-    if (requestId) {
-      // สร้าง folder ตาม parent folder ของ JSON (ถ้ามี) หรือใช้ downloadsDir เดิม
-      const fileNameWithoutExt = path.parse(originalFileName).name;
-      const parentDir = targetSubdir ? path.join(downloadsDir, targetSubdir) : downloadsDir;
-      createDirectory(parentDir);
-      
-      const pendingBaseName =
-        pageNumbers.length > 0 ? `${originalFileName}_${pageLabel}` : originalFileName;
-      const pendingFileName = `${sanitizeFileName(pendingBaseName)}_${requestId}.json`;
-      const pendingPath = path.join(parentDir, pendingFileName);
-      const pendingPayload = {
-        status: "pending",
-        request_id: requestId,
-        sent_file: originalFileName,
-        page_numbers: pageNumbers,
-        created_at: new Date().toISOString(),
-        response_preview: response.data,
-      };
-      fs.writeFileSync(pendingPath, JSON.stringify(pendingPayload, null, 2));
-      const logFolder = targetSubdir || ".";
-      console.log(`Created pending file: ${pendingFileName} in folder: ${logFolder}`);
-    } else {
-      console.warn("No request_id found in response; pending file not created.");
-    }
-
-    // Save response to JSON
-    const jsonFileName = pageNumbers.length > 0 
-      ? `${fileNameWithoutExtension}_pages_${pageNumbers.join("-")}.json`
-      : `${fileNameWithoutExtension}.json`;
-    const jsonDir = targetSubdir
-      ? path.join(destination, "json", targetSubdir)
-      : path.join(destination, "json");
-    createDirectory(jsonDir);
-    const jsonPath = path.join(jsonDir, jsonFileName);
-    fs.writeFileSync(jsonPath, JSON.stringify(response.data, null, 2));
   } catch (error) {
     let errorMessage = `Error processing file ${fileName}`;
     if (pageNumbers.length > 0) {
