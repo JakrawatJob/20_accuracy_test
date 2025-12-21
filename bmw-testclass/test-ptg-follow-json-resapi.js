@@ -11,10 +11,33 @@ const SOURCE_DIR = path.join(__dirname, "BMW_FILE"); // Source directory for PDF
 const DOWNLOADS_DIR = path.join(__dirname, "downloads", "res"); // Directory to save API responses
 const API_URL = "https://playground2-3052.space.aigen.dev/api/ocr-extract";
 const AUTH_TOKEN = process.env.AIGEN_TOKEN || "YOUR_TOKEN"; // Set via environment variable or replace with your token
-const MAX_CONCURRENT_REQUESTS = 1;
+const MAX_CONCURRENT_REQUESTS = 5;
 const DELAY_BETWEEN_REQUESTS = 1000; // 1 second
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Run an array of async task functions with a concurrency limit
+async function runWithConcurrency(tasks, limit) {
+  let index = 0;
+
+  const worker = async () => {
+    while (true) {
+      const currentIndex = index++;
+      if (currentIndex >= tasks.length) break;
+
+      await tasks[currentIndex]();
+
+      if (DELAY_BETWEEN_REQUESTS > 0) {
+        await delay(DELAY_BETWEEN_REQUESTS);
+      }
+    }
+  };
+
+  const workerCount = Math.min(limit, tasks.length);
+  const workers = Array.from({ length: workerCount }, worker);
+
+  await Promise.all(workers);
+}
 
 // Ensure directory exists
 const createDirectory = (dir) => {
@@ -347,16 +370,12 @@ async function processAllPdfs() {
     return;
   }
   
-  const results = {
-    success: [],
-    failed: []
-  };
+  const results = { success: [], failed: [] };
+  const tasks = [];
   
-  // Process each PDF file found in JSON results
+  // Build task list for each PDF page (each page may have different document_type)
   for (const baseFileName of Object.keys(pageMap)) {
     const { pages, pageToDir } = pageMap[baseFileName];
-    
-    // Find the PDF file in source directory
     const pdfPath = findPdfFile(baseFileName);
     
     if (!pdfPath) {
@@ -374,22 +393,27 @@ async function processAllPdfs() {
     console.log(`  Found at: ${pdfPath}`);
     console.log(`  Pages to process: ${pages.join(", ")}`);
     
-    // Process each page separately (each page may have different document_type)
     for (const pageNumber of pages) {
       const documentType = pageToDir[pageNumber] || "unknown";
       
-      const result = await callOcrApi(pdfPath, documentType, [pageNumber]);
-      
-      if (result.success) {
-        results.success.push(result);
-      } else {
-        results.failed.push(result);
-      }
-      
-      // Delay between requests
-      await delay(DELAY_BETWEEN_REQUESTS);
+      tasks.push(async () => {
+        const result = await callOcrApi(pdfPath, documentType, [pageNumber]);
+        if (result.success) {
+          results.success.push(result);
+        } else {
+          results.failed.push(result);
+        }
+      });
     }
   }
+  
+  if (tasks.length === 0) {
+    console.log("No tasks to process.");
+    return;
+  }
+  
+  console.log(`\nRunning with concurrency limit: ${MAX_CONCURRENT_REQUESTS}`);
+  await runWithConcurrency(tasks, MAX_CONCURRENT_REQUESTS);
   
   // Print summary
   console.log("\n=== Processing Summary ===");

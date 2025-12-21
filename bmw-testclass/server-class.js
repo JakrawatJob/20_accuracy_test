@@ -4,7 +4,8 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DOWNLOAD_DIR = path.join(__dirname, 'downloads/bmw1');
+// Webhook results will be written here (aligned with sender script)
+const DOWNLOAD_DIR = path.join(__dirname, 'downloads/bmwres');
 
 // Configuration for data extraction
 const DATA_EXTRACTION_CONFIG = {
@@ -277,4 +278,3 @@ app.listen(PORT, () => {
     console.log(`Webhook receiver listening on port ${PORT}`);
     console.log(`Saving files to: ${DOWNLOAD_DIR}`);
 });
-
