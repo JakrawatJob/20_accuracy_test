@@ -34,8 +34,8 @@ function extractPageNumbersFromJsonResults() {
       } else if (
         entry.isFile() &&
         entry.name.endsWith(".json") &&
-        // accept any schema type, e.g. __schema_passport, __schema_amr, etc.
-        entry.name.includes("__schema_")
+        // Accept both formats: filename.pdf_page.json or filename.pdf_page__schema_type.json
+        (entry.name.includes("__schema_") || /\.pdf_\d+\.json$/.test(entry.name))
       ) {
         files.push(fullPath);
       }
@@ -57,14 +57,21 @@ function extractPageNumbersFromJsonResults() {
     for (const jsonFileFullPath of jsonFiles) {
       const jsonFile = path.basename(jsonFileFullPath);
       const relativeDir = path.relative(jsonResultPath, path.dirname(jsonFileFullPath)); // e.g., "passport"
-      // Parse filename: 508807.pdf_19__schema_passport.json
-      // Pattern: {baseFile}_{page}__schema_<type>.json
-      // Match everything up to .pdf, then _pageNumber__schema_<schemaName>.json
-      const match = jsonFile.match(/^(.+\.pdf)_(\d+)__schema_[^.]+\.json$/);
+      // Parse filename: Support two formats:
+      // 1. 508807.pdf_19__schema_passport.json (with __schema_)
+      // 2. 8356582 Inv 9-22 Mar 25 (5 of 9).pdf_1.json (without __schema_)
+      // Pattern 1: {baseFile}_{page}__schema_<type>.json
+      // Pattern 2: {baseFile}_{page}.json
+      let match = jsonFile.match(/^(.+\.pdf)_(\d+)__schema_[^.]+\.json$/);
+      
+      // If first pattern doesn't match, try second pattern
+      if (!match) {
+        match = jsonFile.match(/^(.+\.pdf)_(\d+)\.json$/);
+      }
 
       if (match) {
-        const baseFile = match[1]; // e.g., "508807.pdf"
-        const pageNumber = parseInt(match[2], 10); // e.g., 19
+        const baseFile = match[1]; // e.g., "508807.pdf" or "8356582 Inv 9-22 Mar 25 (5 of 9).pdf"
+        const pageNumber = parseInt(match[2], 10); // e.g., 19 or 1
 
         if (!pageMap[baseFile]) {
           pageMap[baseFile] = { pages: [], pageToDir: {} };
@@ -136,16 +143,17 @@ const webhookUrl = "https://playground2-3001.space.aigen.dev/webhook"
 //const serviceUse = "foodhouse"
 //const serviceUse = "bla"
 //const serviceUse = "malee_ocr"
-//const serviceUse = "custom_create_truth"
+//const serviceUse = "custom_service_test"
+const serviceUse = "ptg_special_invoice"
 //const serviceUse = "bmw_classify"
-const serviceUse = "bmw_ocr"
+//const serviceUse = "bmw_ocr"
 //const serviceUse = "thaihonda_hospital"
 
 const responseType = "webhook";
 
-const source = path.join(__dirname, "BMW_FILE");
+const source = path.join(__dirname, "01_PTG_FILE");
 const destination = path.join(__dirname, "downloads/result");
-const downloadsDir = path.join(__dirname, "downloads/bmw1");
+const downloadsDir = path.join(__dirname, "downloads/ptg1");
 // Remove file_name= from base PATH
 const BASE_PATH = `https://playground2-3052.space.aigen.dev/workflow?action=process_document&channel=RPA_AppToOCR&content_encoding=binary&response_type=${responseType}&response_target=${encodeURIComponent(webhookUrl)}&service=${serviceUse}&file_name=`;
 const AIGEN_API_KEY = "AGa135fgnbiz63ico4o219shi7hxlobu06";
