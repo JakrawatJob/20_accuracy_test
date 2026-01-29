@@ -16,9 +16,9 @@ const webhookUrl = "https://playground2-3001.space.aigen.dev/webhook"
 //const serviceUse = "foodhouse"
 //const serviceUse = "bla"
 //const serviceUse = "malee_ocr"
-//const serviceUse = "custom_create_truth"
+const serviceUse = "custom_create_truth"
 //const serviceUse = "bmw_classify"
-const serviceUse = "bmw_ocr"
+//const serviceUse = "bmw_ocr"
 //const serviceUse = "thaihonda_hospital"
 
 const responseType = "webhook";

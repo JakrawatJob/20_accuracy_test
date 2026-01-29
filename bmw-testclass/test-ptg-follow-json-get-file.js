@@ -1,43 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const axios = require("axios");
-const FormData = require("form-data");
-const { PassThrough } = require("stream");
 const { PDFDocument } = require("pdf-lib");
 
 // Configuration
 const JSON_RESULT_DIR = path.join(__dirname, "jsonResult");
 const SOURCE_DIR = path.join(__dirname, "BMW_FILE"); // Source directory for PDF files
-const DOWNLOADS_DIR = path.join(__dirname, "downloads", "res"); // Directory to save API responses
-const API_URL = "https://playground2-3055.space.aigen.dev/api/ocr-extract";
-const AUTH_TOKEN = process.env.AIGEN_TOKEN || "YOUR_TOKEN"; // Set via environment variable or replace with your token
-const MAX_CONCURRENT_REQUESTS = 10;
-const DELAY_BETWEEN_REQUESTS = 1000; // 1 second
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Run an array of async task functions with a concurrency limit
-async function runWithConcurrency(tasks, limit) {
-  let index = 0;
-
-  const worker = async () => {
-    while (true) {
-      const currentIndex = index++;
-      if (currentIndex >= tasks.length) break;
-
-      await tasks[currentIndex]();
-
-      if (DELAY_BETWEEN_REQUESTS > 0) {
-        await delay(DELAY_BETWEEN_REQUESTS);
-      }
-    }
-  };
-
-  const workerCount = Math.min(limit, tasks.length);
-  const workers = Array.from({ length: workerCount }, worker);
-
-  await Promise.all(workers);
-}
+const OUTPUT_DIR = path.join(__dirname, "downloads", "01_pdf_page_use"); // Directory to save extracted PDF pages
 
 // Ensure directory exists
 const createDirectory = (dir) => {
@@ -207,160 +175,55 @@ async function extractPagesFromPdf(pdfPath, pageNumbers) {
 }
 
 /**
- * Call the OCR API for a PDF file (or specific pages)
+ * Extract and save a single page from PDF
  */
-async function callOcrApi(pdfPath, documentType, pageNumbers = []) {
+async function extractAndSavePage(pdfPath, pageNumber, documentType, baseFileName) {
   try {
-    const fileName = path.basename(pdfPath);
-    let fileToSend;
-    let displayName = fileName;
+    const extractedPdfBytes = await extractPagesFromPdf(pdfPath, [pageNumber]);
     
-    // Create form data
-    const formData = new FormData();
-    const fileNameForUpload = pageNumbers.length > 0 
-      ? `${path.parse(fileName).name}_pages_${pageNumbers.join("-")}.pdf`
-      : fileName;
+    // Create directory for document type
+    const docTypeDir = path.join(OUTPUT_DIR, documentType);
+    createDirectory(docTypeDir);
     
-    if (pageNumbers.length > 0) {
-      displayName = `${fileName} (pages ${pageNumbers.join(", ")})`;
-      console.log(`\nProcessing: ${displayName} (document_type: ${documentType})`);
-      
-      // Extract specific pages
-      const extractedPdfBytes = await extractPagesFromPdf(pdfPath, pageNumbers);
-      // Convert Uint8Array to Buffer
-      const pdfBuffer = Buffer.from(extractedPdfBytes);
-      
-      // Use PassThrough stream for FormData compatibility
-      const stream = new PassThrough();
-      stream.end(pdfBuffer);
-      
-      formData.append('file', stream, {
-        filename: fileNameForUpload,
-        contentType: 'application/pdf'
-      });
-    } else {
-      console.log(`\nProcessing: ${displayName} (document_type: ${documentType})`);
-      // Use file stream for whole file
-      fileToSend = fs.createReadStream(pdfPath);
-      formData.append('file', fileToSend, {
-        filename: fileNameForUpload,
-        contentType: 'application/pdf'
-      });
-    }
+    // Create filename: {pdfname}_{page}__schema_{document_type}.pdf
+    const outputFileName = `${baseFileName}_${pageNumber}__schema_${documentType}.pdf`;
+    const outputFilePath = path.join(docTypeDir, sanitizeFileName(outputFileName));
     
-    // Make API request
-    const response = await axios.post(
-      `${API_URL}?document_type=${documentType}`,
-      formData,
-      {
-        headers: {
-          'Authorization': `Bearer ${AUTH_TOKEN}`,
-          ...formData.getHeaders()
-        },
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity
-      }
-    );
+    fs.writeFileSync(outputFilePath, extractedPdfBytes);
     
-    console.log(`✓ Success: ${displayName}`);
-    console.log(`  Response status: ${response.status}`);
-    
-    // Save response to file
-    try {
-      // Use the same filename format as JSON results: {pdfname}_{page}__schema_{document_type}.json
-      const responseFileName = pageNumbers.length > 0
-        ? `${fileName}_${pageNumbers[0]}__schema_${documentType}.json`
-        : `${path.parse(fileName).name}__schema_${documentType}.json`;
-      
-      // Create directory for document type
-      const docTypeDir = path.join(DOWNLOADS_DIR, documentType);
-      createDirectory(docTypeDir);
-      
-      const responseFilePath = path.join(docTypeDir, sanitizeFileName(responseFileName));
-      fs.writeFileSync(
-        responseFilePath,
-        JSON.stringify(response.data, null, 2)
-      );
-      console.log(`  Saved response to: ${responseFilePath}`);
-    } catch (saveError) {
-      console.warn(`  Warning: Failed to save response: ${saveError.message}`);
-    }
+    console.log(`  ✓ Saved: ${documentType}/${outputFileName}`);
     
     return {
       success: true,
-      fileName: displayName,
-      documentType,
-      pageNumbers,
-      status: response.status,
-      data: response.data
+      fileName: outputFileName,
+      filePath: outputFilePath,
+      pageNumber,
+      documentType
     };
   } catch (error) {
-    const displayName = pageNumbers.length > 0 
-      ? `${path.basename(pdfPath)} (pages ${pageNumbers.join(", ")})`
-      : path.basename(pdfPath);
-    
-    console.error(`✗ Error processing ${displayName}:`, error.message);
-    if (error.response) {
-      console.error(`  Status: ${error.response.status}`);
-      console.error(`  Data:`, error.response.data);
-      
-      // Save error response to file
-      try {
-        const pdfFileName = path.basename(pdfPath);
-        // Use the same filename format as JSON results: {pdfname}_{page}__schema_{document_type}_error.json
-        const errorFileName = pageNumbers.length > 0
-          ? `${pdfFileName}_${pageNumbers[0]}__schema_${documentType}_error.json`
-          : `${path.parse(pdfFileName).name}__schema_${documentType}_error.json`;
-        
-        // Create directory for document type
-        const docTypeDir = path.join(DOWNLOADS_DIR, documentType);
-        createDirectory(docTypeDir);
-        
-        const errorFilePath = path.join(docTypeDir, sanitizeFileName(errorFileName));
-        const errorData = {
-          error: error.message,
-          status: error.response.status,
-          data: error.response.data,
-          timestamp: new Date().toISOString()
-        };
-        fs.writeFileSync(
-          errorFilePath,
-          JSON.stringify(errorData, null, 2)
-        );
-        console.error(`  Saved error response to: ${errorFilePath}`);
-      } catch (saveError) {
-        console.warn(`  Warning: Failed to save error response: ${saveError.message}`);
-      }
-    }
-    
+    console.error(`  ✗ Error extracting page ${pageNumber} from ${baseFileName}:`, error.message);
     return {
       success: false,
-      fileName: displayName,
+      fileName: baseFileName,
+      pageNumber,
       documentType,
-      pageNumbers,
-      error: error.message,
-      status: error.response?.status
+      error: error.message
     };
   }
 }
 
+
 /**
- * Main function to process all PDFs based on JSON results
+ * Main function to extract PDF pages based on JSON results
  */
 async function processAllPdfs() {
-  console.log("=== Starting PDF Processing ===");
+  console.log("=== Starting PDF Page Extraction ===");
   console.log(`JSON Results: ${JSON_RESULT_DIR}`);
   console.log(`Source PDFs: ${SOURCE_DIR}`);
-  console.log(`Response Output: ${DOWNLOADS_DIR}\n`);
+  console.log(`Output Directory: ${OUTPUT_DIR}\n`);
   
-  // Ensure downloads directory exists
-  createDirectory(DOWNLOADS_DIR);
-  
-  // Check if token is set
-  if (AUTH_TOKEN === "YOUR_TOKEN") {
-    console.warn("⚠ Warning: AUTH_TOKEN is not set!");
-    console.warn("Please set AIGEN_TOKEN environment variable or update the script with your token.\n");
-  }
+  // Ensure output directory exists
+  createDirectory(OUTPUT_DIR);
   
   // Extract page numbers from JSON results
   const pageMap = extractPageNumbersFromJsonResults();
@@ -371,9 +234,8 @@ async function processAllPdfs() {
   }
   
   const results = { success: [], failed: [] };
-  const tasks = [];
   
-  // Build task list for each PDF page (each page may have different document_type)
+  // Process each PDF and extract required pages
   for (const baseFileName of Object.keys(pageMap)) {
     const { pages, pageToDir } = pageMap[baseFileName];
     const pdfPath = findPdfFile(baseFileName);
@@ -391,29 +253,20 @@ async function processAllPdfs() {
     
     console.log(`\n--- Processing PDF: ${baseFileName} ---`);
     console.log(`  Found at: ${pdfPath}`);
-    console.log(`  Pages to process: ${pages.join(", ")}`);
+    console.log(`  Pages to extract: ${pages.join(", ")}`);
     
     for (const pageNumber of pages) {
       const documentType = pageToDir[pageNumber] || "unknown";
       
-      tasks.push(async () => {
-        const result = await callOcrApi(pdfPath, documentType, [pageNumber]);
-        if (result.success) {
-          results.success.push(result);
-        } else {
-          results.failed.push(result);
-        }
-      });
+      const result = await extractAndSavePage(pdfPath, pageNumber, documentType, baseFileName);
+      
+      if (result.success) {
+        results.success.push(result);
+      } else {
+        results.failed.push(result);
+      }
     }
   }
-  
-  if (tasks.length === 0) {
-    console.log("No tasks to process.");
-    return;
-  }
-  
-  console.log(`\nRunning with concurrency limit: ${MAX_CONCURRENT_REQUESTS}`);
-  await runWithConcurrency(tasks, MAX_CONCURRENT_REQUESTS);
   
   // Print summary
   console.log("\n=== Processing Summary ===");
@@ -421,13 +274,14 @@ async function processAllPdfs() {
   console.log(`Total failed: ${results.failed.length}`);
   
   if (results.failed.length > 0) {
-    console.log("\nFailed files:");
+    console.log("\nFailed extractions:");
     results.failed.forEach(result => {
-      console.log(`  - ${result.fileName} (${result.documentType || 'N/A'}): ${result.error}`);
+      console.log(`  - ${result.fileName} page ${result.pageNumber} (${result.documentType || 'N/A'}): ${result.error}`);
     });
   }
   
-  console.log("\n=== Processing Complete ===");
+  console.log(`\n=== Extraction Complete ===`);
+  console.log(`Output saved to: ${OUTPUT_DIR}`);
 }
 
 // Run the script
@@ -435,3 +289,4 @@ processAllPdfs().catch(error => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
+

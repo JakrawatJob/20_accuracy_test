@@ -5,7 +5,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 // Webhook results will be written here (aligned with sender script)
-const DOWNLOAD_DIR = path.join(__dirname, 'downloads/bmwres');
+const DOWNLOAD_DIR = path.join(__dirname, 'downloads/ptg1');
 
 // Configuration for data extraction
 const DATA_EXTRACTION_CONFIG = {

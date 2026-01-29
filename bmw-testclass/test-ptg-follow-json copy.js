@@ -34,8 +34,8 @@ function extractPageNumbersFromJsonResults() {
       } else if (
         entry.isFile() &&
         entry.name.endsWith(".json") &&
-        // Accept both formats: filename.pdf_page.json or filename.pdf_page__schema_type.json
-        (entry.name.includes("__schema_") || /\.pdf_\d+\.json$/.test(entry.name))
+        // accept any schema type, e.g. __schema_passport, __schema_amr, etc.
+        entry.name.includes("__schema_")
       ) {
         files.push(fullPath);
       }
@@ -57,31 +57,14 @@ function extractPageNumbersFromJsonResults() {
     for (const jsonFileFullPath of jsonFiles) {
       const jsonFile = path.basename(jsonFileFullPath);
       const relativeDir = path.relative(jsonResultPath, path.dirname(jsonFileFullPath)); // e.g., "passport"
-      // Parse filename: Support two formats:
-      // 1. 508807.pdf_19__schema_passport.json (with __schema_)
-      // 2. 8356582 Inv 9-22 Mar 25 (5 of 9).pdf_1.json (without __schema_)
-      // 3. 9210075299 PTG-4900124755 07080002.PDF.pdf_1.json (with double extension)
-      // Pattern 1: {baseFile}_{page}__schema_<type>.json
-      // Pattern 2: {baseFile}_{page}.json
-      // Use case-insensitive matching for .pdf/.PDF extensions
-      let match = jsonFile.match(/^(.+\.pdf)_(\d+)__schema_[^.]+\.json$/i);
-      
-      // If first pattern doesn't match, try second pattern
-      if (!match) {
-        match = jsonFile.match(/^(.+\.pdf)_(\d+)\.json$/i);
-      }
+      // Parse filename: 508807.pdf_19__schema_passport.json
+      // Pattern: {baseFile}_{page}__schema_<type>.json
+      // Match everything up to .pdf, then _pageNumber__schema_<schemaName>.json
+      const match = jsonFile.match(/^(.+\.pdf)_(\d+)__schema_[^.]+\.json$/);
 
       if (match) {
-        let baseFile = match[1]; // e.g., "508807.pdf" or "9210075299 PTG-4900124755 07080002.PDF.pdf"
-        const pageNumber = parseInt(match[2], 10); // e.g., 19 or 1
-
-        // Normalize base filename: remove duplicate .pdf/.PDF extensions
-        // Handle cases like "file.PDF.pdf" -> "file.PDF" or "file.pdf.pdf" -> "file.pdf"
-        // Match pattern: .PDF.pdf, .pdf.PDF, .pdf.pdf, .PDF.PDF (case-insensitive)
-        baseFile = baseFile.replace(/\.(pdf|PDF)\.(pdf|PDF)$/i, (match, ext1, ext2) => {
-          // Keep the first extension (preserve original case)
-          return `.${ext1}`;
-        });
+        const baseFile = match[1]; // e.g., "508807.pdf"
+        const pageNumber = parseInt(match[2], 10); // e.g., 19
 
         if (!pageMap[baseFile]) {
           pageMap[baseFile] = { pages: [], pageToDir: {} };
@@ -153,8 +136,7 @@ const webhookUrl = "https://playground2-3001.space.aigen.dev/webhook"
 //const serviceUse = "foodhouse"
 //const serviceUse = "bla"
 //const serviceUse = "malee_ocr"
-//const serviceUse = "custom_service_test"
-const serviceUse = "ptg_special_invoice"
+const serviceUse = "custom_create_truth"
 //const serviceUse = "bmw_classify"
 //const serviceUse = "bmw_ocr"
 //const serviceUse = "thaihonda_hospital"
@@ -184,23 +166,6 @@ createDirectory(downloadsDir);
 
 const sanitizeFileName = (name = "") =>
   name.replace(/[<>:"/\\|?*\u0000]/g, "_");
-
-// Truncate filename to avoid ENAMETOOLONG error
-// Max length: 100 chars for base name (leaving room for _page_requestId.json)
-// This ensures we stay well under 255 bytes even with multi-byte UTF-8 characters
-const truncateFileName = (name = "", maxLength = 100) => {
-  if (!name || name.length <= maxLength) {
-    return name;
-  }
-  // Keep extension if present
-  const extMatch = name.match(/\.([^.]+)$/);
-  const extension = extMatch ? `.${extMatch[1]}` : "";
-  const nameWithoutExt = extMatch ? name.slice(0, -extension.length) : name;
-  
-  // Truncate and add extension back
-  const truncated = nameWithoutExt.slice(0, maxLength - extension.length);
-  return truncated + extension;
-};
 
 const extractRequestId = (payload = {}) =>
   payload.request_id ||
@@ -321,9 +286,7 @@ async function processFile(fileName, pageNumbers = [], targetSubdir = "") {
       
       const pendingBaseName =
         pageNumbers.length > 0 ? `${originalFileName}_${pageLabel}` : originalFileName;
-      // Truncate filename to avoid ENAMETOOLONG error (max 100 chars for base, leaving room for _requestId.json)
-      const truncatedBaseName = truncateFileName(sanitizeFileName(pendingBaseName), 100);
-      const pendingFileName = `${truncatedBaseName}_${requestId}.json`;
+      const pendingFileName = `${sanitizeFileName(pendingBaseName)}_${requestId}.json`;
       const pendingPath = path.join(parentDir, pendingFileName);
       const pendingPayload = {
         status: "pending",
@@ -358,11 +321,9 @@ async function processFile(fileName, pageNumbers = [], targetSubdir = "") {
     console.error(errorMessage, error);
 
     // Log error details
-    // Use basename to avoid path duplication when targetSubdir is set
-    const errorBaseName = path.basename(fileName);
     const errorFileName = pageNumbers.length > 0
-      ? `${errorBaseName}_pages_${pageNumbers.join("-")}.error.log`
-      : `${errorBaseName}.error.log`;
+      ? `${fileName}_pages_${pageNumbers.join("-")}.error.log`
+      : `${fileName}.error.log`;
     const errorDir = targetSubdir
       ? path.join(destination, "error", targetSubdir)
       : path.join(destination, "error");
@@ -421,16 +382,9 @@ async function processFilesInBatches(selectedPages = []) {
     const filesToProcess = [];
     const filesToSkip = [];
     
-    // Create a case-insensitive lookup map
-    const pageMapLower = {};
-    for (const key in pageMap) {
-      pageMapLower[key.toLowerCase()] = pageMap[key];
-    }
-    
     for (const fileName of files) {
       const baseName = path.basename(fileName);
-      // Try exact match first, then case-insensitive match
-      const fileData = pageMap[baseName] || pageMapLower[baseName.toLowerCase()] || {};
+      const fileData = pageMap[baseName] || {};
       const pagesToProcess = fileData.pages || [];
       const pageToDir = fileData.pageToDir || {};
       

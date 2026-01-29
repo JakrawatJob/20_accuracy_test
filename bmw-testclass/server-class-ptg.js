@@ -150,11 +150,43 @@ const extractFinalData = (payload) => {
   }
 };
 
-// Extract document_type from final data
-const extractDocumentType = (finalData) => {
+// Extract document_type from final data or raw payload
+const extractDocumentType = (finalData, rawPayload = null) => {
+  // Try to extract from finalData first
   if (finalData && typeof finalData === 'object' && finalData.document_type) {
+    console.log(`[extractDocumentType] Found document_type in finalData: ${finalData.document_type}`);
     return finalData.document_type;
   }
+  
+  // If not found, try to extract from raw payload
+  if (rawPayload) {
+    // Try data.data[0].document_type
+    if (rawPayload?.data && Array.isArray(rawPayload.data) && rawPayload.data.length > 0) {
+      const firstItem = rawPayload.data[0];
+      if (firstItem?.document_type) {
+        console.log(`[extractDocumentType] Found document_type in rawPayload.data[0]: ${firstItem.document_type}`);
+        return firstItem.document_type;
+      }
+      if (firstItem?.data?.document_type) {
+        console.log(`[extractDocumentType] Found document_type in rawPayload.data[0].data: ${firstItem.data.document_type}`);
+        return firstItem.data.document_type;
+      }
+    }
+    
+    // Try data.document_type
+    if (rawPayload?.data?.document_type) {
+      console.log(`[extractDocumentType] Found document_type in rawPayload.data: ${rawPayload.data.document_type}`);
+      return rawPayload.data.document_type;
+    }
+    
+    // Try document_type at root level
+    if (rawPayload?.document_type) {
+      console.log(`[extractDocumentType] Found document_type in rawPayload root: ${rawPayload.document_type}`);
+      return rawPayload.document_type;
+    }
+  }
+  
+  console.warn(`[extractDocumentType] document_type not found in payload`);
   return null;
 };
 
@@ -199,7 +231,9 @@ app.post('/webhook', (req, res) => {
         
         // Extract final data object (data.data[0].data)
         const finalData = extractFinalData(rawData);
-        const documentType = extractDocumentType(finalData);
+        const documentType = extractDocumentType(finalData, rawData);
+        
+        console.log(`[Webhook] documentType extracted: ${documentType || 'null'}`);
         
         let filename;
         let filePath;
@@ -215,25 +249,69 @@ app.post('/webhook', (req, res) => {
                 const dataToSave = { ...finalData };
                 delete dataToSave.document_type;
                 
+                // Read pending payload to get original filename
+                let originalFileName = null;
+                let pageNumbers = [];
+                try {
+                    const pendingContent = fs.readFileSync(pendingFileInfo.fullPath, 'utf8');
+                    const pendingPayload = JSON.parse(pendingContent);
+                    if (pendingPayload.sent_file) {
+                        originalFileName = pendingPayload.sent_file;
+                        pageNumbers = pendingPayload.page_numbers || [];
+                        console.log(`[Webhook] Found original filename in pending file: ${originalFileName}`);
+                        if (pageNumbers.length > 0) {
+                            console.log(`[Webhook] Page numbers: ${pageNumbers.join(', ')}`);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`[Webhook] Could not read pending payload, using filename from path: ${err.message}`);
+                }
+
                 // Save final data (not wrapped in arrays)
                 fs.writeFileSync(pendingFileInfo.fullPath, JSON.stringify(dataToSave, null, 2));
                 console.log(`[Webhook] Updated file content with final data`);
 
-                // เปลี่ยนชื่อไฟล์โดยลบ requestId ออก
-                let finalFilename = pendingFileInfo.filename.replace(`_${requestId}`, '');
-                console.log(`[Webhook] Final filename (after removing request_id): ${finalFilename}`);
+                // ใช้ชื่อไฟล์เดิมจาก pending payload ถ้ามี (เพื่อหลีกเลี่ยงชื่อไฟล์ที่ถูก truncate)
+                // ถ้าไม่มี ให้ใช้ชื่อไฟล์จาก path (backward compatibility)
+                let baseFilename;
+                if (originalFileName) {
+                    // ใช้ชื่อไฟล์เดิม + page numbers ถ้ามี
+                    if (pageNumbers.length > 0) {
+                        const pageLabel = pageNumbers.join('-');
+                        baseFilename = `${originalFileName}_${pageLabel}`;
+                    } else {
+                        baseFilename = originalFileName;
+                    }
+                } else {
+                    // Fallback: ใช้ชื่อไฟล์จาก path (ลบ requestId ออก)
+                    baseFilename = pendingFileInfo.filename.replace(`_${requestId}`, '');
+                }
+                
+                let finalFilename = baseFilename;
+                console.log(`[Webhook] Base filename: ${finalFilename}`);
                 
                 // Add document_type to filename if available
                 if (documentType) {
                     // Extract base filename without extension
                     const parsed = path.parse(finalFilename);
-                    const baseName = parsed.name; // e.g., "555322.pdf_1"
-                    const extension = parsed.ext; // ".json"
+                    let baseName = parsed.name; // e.g., "555322.pdf_1" or "file.pdf_1"
+                    let extension = parsed.ext; // ".json" or ""
+                    
+                    // ถ้าไม่มี extension หรือไม่ใช่ .json ให้ใช้ .json
+                    if (!extension || extension !== '.json') {
+                        extension = '.json';
+                    }
                     
                     // Add document_type before extension
                     finalFilename = `${baseName}__schema_${documentType}${extension}`;
                     console.log(`[Webhook] Adding document_type to filename: ${documentType}`);
                     console.log(`[Webhook] Final filename with document_type: ${finalFilename}`);
+                } else {
+                    // ถ้าไม่มี document_type แต่ไฟล์ยังไม่มี extension .json ให้เพิ่ม
+                    if (!finalFilename.endsWith('.json')) {
+                        finalFilename = `${finalFilename}.json`;
+                    }
+                    console.warn(`[Webhook] documentType is null/undefined, not adding __schema_ suffix`);
                 }
                 
                 // ถ้ามี folder ให้เก็บไว้ใน folder เดิม
